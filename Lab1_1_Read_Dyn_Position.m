@@ -33,6 +33,7 @@ ADDR_PRO_GOAL_POSITION       = 116;
 ADDR_PRO_PRESENT_POSITION    = 132; 
 ADDR_PRO_OPERATING_MODE      = 11;
 ADDR_PRO_PROFILE_VELOCITY    = 112;
+ADDR_PRO_GOAL_VELOCITY    = 104;
  
 %% ---- Other Settings ---- %%
 
@@ -51,7 +52,7 @@ DXL_IDS = [DXL_ID1 DXL_ID2 DXL_ID3 DXL_ID4 DXL_GRIP];   % 统一管理
 
 
 BAUDRATE                    = 1000000;
-DEVICENAME                  = 'COM19';       % Check which port is being used on your controller
+DEVICENAME                  = 'COM23';       % Check which port is being used on your controller
                                             % ex) Windows: 'COM1'   Linux: '/dev/ttyUSB0' Mac: '/dev/tty.usbserial-*'
                                             
 TORQUE_ENABLE               = 1;            % Value for enabling the torque
@@ -66,7 +67,7 @@ COMM_SUCCESS                = 0;            % Communication Success result value
 COMM_TX_FAIL                = -1001;        % Communication Tx Failed
 MAX_POS                     = 3400; 
 MIN_POS                     = 600; 
-VELOCITY                    = 1000;
+VELOCITY                    = 100;
 
 %% ------------------ %%
 
@@ -115,7 +116,7 @@ end
 
 % Put actuator into Position Control Mode
 for id = DXL_IDS
-    write1ByteTxRx(port_num, PROTOCOL_VERSION, id, ADDR_PRO_OPERATING_MODE, 3);
+    write1ByteTxRx(port_num, PROTOCOL_VERSION, id, ADDR_PRO_OPERATING_MODE, 1);
 end
 
 % Enable Dynamixel Torque
@@ -145,51 +146,19 @@ write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_MAX_POS, MAX_POS);
 write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID2, ADDR_MAX_POS, MAX_POS);
 write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_MIN_POS, MIN_POS); 
 write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID2, ADDR_MIN_POS, MIN_POS);
-write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_PRO_GOAL_POSITION, 2048);
-write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID2, ADDR_PRO_GOAL_POSITION, 2048);
+write4ByteTxRx(port_num, PROTOCOL_VERSION, 14, ...
+               ADDR_PRO_GOAL_VELOCITY, uint32(50));
+
+pause(2)
+
+% 反方向：-50 → int32 → 位型转成 uint32
+u = typecast(int32(-50), 'uint32');
+write4ByteTxRx(port_num, PROTOCOL_VERSION, 14, ...
+               ADDR_PRO_GOAL_VELOCITY, u);
+pause(2)
+write4ByteTxRx(port_num, PROTOCOL_VERSION, 14, ADDR_PRO_GOAL_VELOCITY, 0);
 pause(1)
 
-i = 0;
-
-while i<360
-    goal_pos1 = 2048-sin(i/180*pi)*500;
-    goal_pos2 = 2048+sin(i/180*pi)*500;
-    write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_PRO_GOAL_POSITION, goal_pos1);
-    write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID2, ADDR_PRO_GOAL_POSITION, goal_pos2);
-
-
-    dxl1_present_position = read4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_PRO_PRESENT_POSITION);
-    dxl2_present_position = read4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID2, ADDR_PRO_PRESENT_POSITION);
-    dxl_comm_result = getLastTxRxResult(port_num, PROTOCOL_VERSION);
-    
-    dxl_error = getLastRxPacketError(port_num, PROTOCOL_VERSION);
-    
-    if dxl_comm_result ~= COMM_SUCCESS
-        fprintf('%s\n', getTxRxResult(PROTOCOL_VERSION, dxl_comm_result));
-    elseif dxl_error ~= 0
-        fprintf('%s\n', getRxPacketError(PROTOCOL_VERSION, dxl_error));
-    end
-
-    %fprintf('[ID:%03d] Position: %03d\n', DXL_ID1, typecast(uint32(dxl1_present_position), 'int32'));
-    
-    T_0 = [1 0 0;
-           0 1 0;
-           0 0 1];
-
-    theta1 = (dxl1_present_position-2048)/4096*2*pi;
-
-    T_1 = [cos(theta1)  sin(theta1)  80*sin(theta1);
-        -sin(theta1)  cos(theta1)  80*cos(theta1);
-        0  0   1 ];
-    
-    theta2 = (dxl2_present_position-2048)/4096*2*pi;
-
-    T_2 = [cos(theta2)  sin(theta2)  60*sin(theta2);
-        -sin(theta2)  cos(theta2)  60*cos(theta2);
-        0  0   1 ];
-
-    
-    T_final = T_2*T_1*T_0
     
 
     % Set max position limit 
@@ -218,9 +187,6 @@ while i<360
         end
     end
 %}
-    pause(0.001);
-    i = i+1;
-end
 
 
 % Disable Dynamixel Torque
@@ -242,5 +208,14 @@ fprintf('Port Closed \n');
 % Unload Library
 unloadlibrary(lib_name);
 
+
 close all;
 clear all;
+
+
+
+function output = negative(input_val)
+    output = 2^32-input_val;
+end
+    
+
