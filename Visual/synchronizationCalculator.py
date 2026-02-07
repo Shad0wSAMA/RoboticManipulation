@@ -4,7 +4,7 @@ from ultralytics import YOLO
 def main():
     model = YOLO("yolov8n.pt")
 
-    cap = cv2.VideoCapture(0)  # 0=摄像头；或 "video.mp4"
+    cap = cv2.VideoCapture(2)  # 0=摄像头；或 "video.mp4"
     if not cap.isOpened():
         raise RuntimeError("无法打开视频源")
 

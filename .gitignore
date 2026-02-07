@@ -1,1 +1,5 @@
 Visual/calib_images/
+Visual/venv
+Visual/yolo
+Visual/yolo_dataset
+Visual/dataset
