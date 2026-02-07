@@ -1,0 +1,47 @@
+# Calibration images and camera data
+calib_images/
+camera_intrinsics.npz
+homography_table.npz
+
+# Dataset and training data
+dataset/
+yolo_dataset/
+
+# YOLO training outputs
+runs/
+
+# Detection and test results
+detection_results/
+snapshot_detections/
+test_results/
+testing/
+
+# Generated images
+birds_eye_view.png
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Other documentation
+utilities/Calibration\ Board.docx
+utilities/Calibration\ Board.pdf

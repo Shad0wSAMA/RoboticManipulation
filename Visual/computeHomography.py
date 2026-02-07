@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 # ====== 配置 ======
-CAM_ID = 2
+CAM_ID = 1
 # 先填你“认为”的内角点数（cols, rows）。脚本会自动再试 (rows, cols)
 PATTERN = (9, 6)
 SQUARE_MM = 10.0  # 1cm = 10mm
@@ -105,7 +105,7 @@ while True:
 
         world_pts = make_world_points(use_pattern, SQUARE_MM).astype(np.float32)
         
-        # print("inner corner (0,0) pixel =", corners[0][0])
+        print("inner corner (0,0) pixel =", corners[0][0])
         # print("frame_ud size:", frame_ud.shape[:2])  # (h,w)
         img_pts = corners.reshape(-1, 2).astype(np.float32)
 
