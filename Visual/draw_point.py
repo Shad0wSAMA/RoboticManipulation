@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 # ========= 你需要改的配置 =========
-IMAGE_PATH = "calib_images/img_0014.png"
+IMAGE_PATH = "calib_images/img_0032.png"
 INTRINSICS_PATH = "camera_intrinsics.npz"
 HOMO_PATH = "homography_table.npz"
 

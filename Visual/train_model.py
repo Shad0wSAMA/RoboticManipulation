@@ -264,8 +264,13 @@ def main():
     print("Wrote:", yaml_path)
 
     # Train YOLOv8
+    import torch
     from ultralytics import YOLO
 
+    # Check if CUDA is available
+    device = 0 if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device} ({'GPU' if torch.cuda.is_available() else 'CPU'})")
+    
     model = YOLO(MODEL)
     print("\nStarting training...\n")
     model.train(
@@ -274,6 +279,7 @@ def main():
         epochs=EPOCHS,
         batch=BATCH,
         seed=SEED,
+        device=device,
     )
 
     # Optional: validate using best weights produced
