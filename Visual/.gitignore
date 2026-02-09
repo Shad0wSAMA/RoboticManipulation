@@ -7,23 +7,14 @@ homography_table.npz
 dataset/
 yolo_dataset/
 
-<<<<<<< HEAD
-# YOLO training output
-=======
 # YOLO training outputs
 runs/
->>>>>>> 4645412d3c9f1701b0a2c5338e16b8d0ff415d0a
 
 # Detection and test results
 detection_results/
 snapshot_detections/
 test_results/
 testing/
-<<<<<<< HEAD
-yolo/
-runs/
-=======
->>>>>>> 4645412d3c9f1701b0a2c5338e16b8d0ff415d0a
 
 # Generated images
 birds_eye_view.png

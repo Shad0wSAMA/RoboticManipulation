@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 # ====== 配置 ======
-CAM_ID = 1
+CAM_ID = 0
 # 先填你“认为”的内角点数（cols, rows）。脚本会自动再试 (rows, cols)
 PATTERN = (9, 6)
 SQUARE_MM = 10.0  # 1cm = 10mm

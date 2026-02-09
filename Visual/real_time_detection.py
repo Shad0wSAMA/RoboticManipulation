@@ -31,10 +31,10 @@ from ultralytics import YOLO
 from typing import Tuple, List
 
 # Config
-WEIGHTS_PATH = Path("runs/detect/train/weights/best.pt")
+WEIGHTS_PATH = Path("model_weights/T13.pt")
 HOMOGRAPHY_FILE = Path("homography_table.npz")
 INTRINSICS_FILE = Path("camera_intrinsics.npz")
-CAMERA_ID =1
+CAMERA_ID = 0
 CONF_THRESHOLD = 0.25
 OUTPUT_DIR = Path("detection_results")
 

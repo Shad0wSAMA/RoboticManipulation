@@ -20,7 +20,7 @@ from typing import Tuple
 WEIGHTS_PATH = Path("model_weights/T13.pt")
 HOMOGRAPHY_FILE = Path("homography_table.npz")
 INTRINSICS_FILE = Path("camera_intrinsics.npz")
-CAMERA_ID = 1
+CAMERA_ID = 0
 CONF_THRESHOLD = 0.25
 
 # Output folders
