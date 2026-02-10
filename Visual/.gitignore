@@ -5,7 +5,9 @@ homography_table.npz
 
 # Dataset and training data
 dataset/
+dataset_block/
 yolo_dataset/
+yolo_dataset_block/
 
 # YOLO training outputs
 runs/
@@ -45,8 +47,3 @@ Thumbs.db
 # Other documentation
 utilities/Calibration\ Board.docx
 utilities/Calibration\ Board.pdf
-<<<<<<< HEAD
-
-# Explicitly track trained model weights
-=======
->>>>>>> 4645412d3c9f1701b0a2c5338e16b8d0ff415d0a

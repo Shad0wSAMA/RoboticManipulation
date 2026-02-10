@@ -3,8 +3,8 @@ import os
 from datetime import datetime
 
 # ================= CONFIG =================
-SAVE_DIR = "dataset/images"
-CAMERA_INDEX = 2       # 0 = default camera
+SAVE_DIR = "dataset_block/images"
+CAMERA_INDEX = 0       # 0 = default camera
 IMAGE_EXT = ".jpg"      # .jpg or .png
 # ==========================================
 

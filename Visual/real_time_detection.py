@@ -31,7 +31,7 @@ from ultralytics import YOLO
 from typing import Tuple, List
 
 # Config
-WEIGHTS_PATH = Path("model_weights/T13.pt")
+WEIGHTS_PATH = Path("model_weights/Block.pt")
 HOMOGRAPHY_FILE = Path("homography_table.npz")
 INTRINSICS_FILE = Path("camera_intrinsics.npz")
 CAMERA_ID = 0
@@ -255,7 +255,8 @@ try:
         )
         
         # Show frame
-        cv2.imshow("Real-Time Object Detection", frame)
+        disp = cv2.resize(frame, (1280, 720))
+        cv2.imshow("Real-Time Object Detection", disp)
         
         # Handle keyboard input
         key = cv2.waitKey(1) & 0xFF

@@ -34,16 +34,16 @@ from PIL import Image
 # -----------------------------
 # CONFIG (edit these)
 # -----------------------------
-RAW_IMAGES_DIR = Path("dataset/images")
-RAW_ANN_DIR = Path("dataset/annotations")
+RAW_IMAGES_DIR = Path("dataset_block/images")
+RAW_ANN_DIR = Path("dataset_block/annotations")
 
-OUT_DIR = Path("yolo_dataset")  # output dataset root
+OUT_DIR = Path("yolo_dataset_block")  # output dataset root
 SPLIT = {"train": 0.7, "val": 0.2, "test": 0.1}  # must sum to 1.0
 
 # YOLO training config
 MODEL = "yolov8n.pt"
-IMGSZ = 1280
-EPOCHS = 100
+IMGSZ = 640
+EPOCHS = 40
 BATCH = 16
 CONF = 0.25  # used only for optional predict/val runs
 

@@ -52,7 +52,7 @@ DXL_IDS = [DXL_ID1 DXL_ID2 DXL_ID3 DXL_ID4 DXL_GRIP];   % 统一管理
 
 
 BAUDRATE                    = 1000000;
-DEVICENAME                  = 'COM23';       % Check which port is being used on your controller
+DEVICENAME                  = 'COM19';       % Check which port is being used on your controller
                                             % ex) Windows: 'COM1'   Linux: '/dev/ttyUSB0' Mac: '/dev/tty.usbserial-*'
                                             
 TORQUE_ENABLE               = 1;            % Value for enabling the torque
@@ -146,17 +146,16 @@ write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_MAX_POS, MAX_POS);
 write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID2, ADDR_MAX_POS, MAX_POS);
 write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_MIN_POS, MIN_POS); 
 write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID2, ADDR_MIN_POS, MIN_POS);
-write4ByteTxRx(port_num, PROTOCOL_VERSION, 14, ...
-               ADDR_PRO_GOAL_VELOCITY, uint32(50));
 
 pause(2)
 
 % 反方向：-50 → int32 → 位型转成 uint32
 u = typecast(int32(-50), 'uint32');
-write4ByteTxRx(port_num, PROTOCOL_VERSION, 14, ...
+write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ...
                ADDR_PRO_GOAL_VELOCITY, u);
 pause(2)
-write4ByteTxRx(port_num, PROTOCOL_VERSION, 14, ADDR_PRO_GOAL_VELOCITY, 0);
+
+write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_PRO_GOAL_VELOCITY, 0);
 pause(1)
 
     
