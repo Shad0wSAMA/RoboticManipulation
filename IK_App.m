@@ -1,0 +1,416 @@
+function IK_App
+
+%% Robot Parameters
+L1 = 0.077;
+L2 = 0.130;
+L3 = 0.124;
+L4 = 0.126;
+gripper_closed = false;
+
+%% Home Position
+x_home = 0.03;
+y_home = 0.00;
+z_home = 0.15;
+
+%% current angle
+[current_q, ~] = ik_search_phi(x_home,y_home,z_home,L1,L2,L3,L4);
+
+% handle for previous path line
+pathHandle = [];
+
+%% Create Main UI Window
+fig = uifigure('Name','OpenManipulator IK Control',...
+               'Position',[300 200 900 500]);
+
+%% Create 3D Axes inside UI
+ax = uiaxes(fig,'Position',[300 50 550 400]);
+axis(ax,'equal')
+grid(ax,'on')
+view(ax,135,25)
+xlabel(ax,'X'); ylabel(ax,'Y'); zlabel(ax,'Z');
+xlim(ax,[-0.5 0.5]); ylim(ax,[-0.5 0.5]); zlim(ax,[0 0.5]);
+hold(ax,'on')
+
+%% Input Fields
+uilabel(fig,'Text','X (m)','Position',[40 400 60 22]);
+uilabel(fig,'Text','Y (m)','Position',[40 360 60 22]);
+uilabel(fig,'Text','Z (m)','Position',[40 320 60 22]);
+
+xField = uieditfield(fig,'numeric','Position',[110 400 120 22],'Value',0.18);
+yField = uieditfield(fig,'numeric','Position',[110 360 120 22],'Value',0.00);
+zField = uieditfield(fig,'numeric','Position',[110 320 120 22],'Value',0.12);
+
+%% Output Display
+thetaLabel = uitextarea(fig,...
+    'Position',[40 50 200 140],...
+    'Editable','off',...
+    'FontSize',13);
+
+%% Buttons
+uibutton(fig,'Text','Move Robot',...
+    'Position',[10 270 120 35],...
+    'ButtonPushedFcn',@moveRobot);
+
+uibutton(fig,'Text','Return Home',...
+    'Position',[150 270 120 35],...
+    'ButtonPushedFcn',@goHome);
+
+uibutton(fig,'Text','Grab Demo',...
+    'Position',[10 220 120 35],...
+    'ButtonPushedFcn',@grabDemo);
+
+%% Grab
+    function grabDemo(~,~)
+        x = xField.Value;
+        y = yField.Value;
+        z = zField.Value;
+        grabObject(x,y,z);
+    
+    end
+
+%% Callback: Move Robot
+    function moveRobot(~,~)
+        x = xField.Value;
+        y = yField.Value;
+        z = zField.Value;
+        moveToTarget(x,y,z);
+    end
+
+%% Core motion + draw + path
+    function moveToTarget(x,y,z)
+
+        % delete last path (so each move only shows one path)
+        if ~isempty(pathHandle) && isvalid(pathHandle)
+            delete(pathHandle);
+            pathHandle = [];
+        end
+
+        [~, P_initial] = fk_all(current_q, L1, L2, L3, L4);
+        p0 = P_initial(:, end);
+        pf = [x; y; z];
+
+        N = 50;
+        s = linspace(0,1,N);
+        
+        P = zeros(3,N);
+        
+        for i = 1:N
+            P(:,i) = p0 + s(i)*(pf - p0);
+        end
+
+
+        [q_goal, phi_used] = ik_search_phi(x,y,z,L1,L2,L3,L4);
+        if any(isnan(q_goal))
+            thetaLabel.Value = "Unreachable Position!";
+            return;
+        end
+
+        thetaLabel.Value = sprintf([ ...
+            'θ1 = %.3f rad (%.1f°)\n' ...
+            'θ2 = %.3f rad (%.1f°)\n' ...
+            'θ3 = %.3f rad (%.1f°)\n' ...
+            'θ4 = %.3f rad (%.1f°)\n' ...
+            '\nφ selected = %.3f rad (%.1f°)'], ...
+            q_goal(1),rad2deg(q_goal(1)), ...
+            q_goal(2),rad2deg(q_goal(2)), ...
+            q_goal(3),rad2deg(q_goal(3)), ...
+            q_goal(4),rad2deg(q_goal(4)), ...
+            phi_used,rad2deg(phi_used));
+
+        tf = 1;
+        dt = 0.03;
+        tvec = 0:dt:tf;
+
+        % preallocate path points (3 x N)
+        pathPoints = zeros(3, numel(tvec));
+
+        for k = 1:numel(tvec)
+            t = tvec(k);
+            tau = t/tf;
+            s = 3*tau^2 - 2*tau^3;
+            p = p0 + s*(pf - p0);
+
+            [q, phi_used] = ik_search_phi(p(1), p(2), p(3), L1, L2, L3, L4, current_q);
+
+            if any(isnan(q))
+                thetaLabel.Value = "Path blocked!";
+                break;
+            end
+
+            [T_all,P_all] = fk_all(q,L1,L2,L3,L4);
+
+            toolPos = P_all(:,end);
+            pathPoints(:,k) = toolPos;
+
+            cla(ax); hold(ax,'on')
+
+            % links
+            for i = 1:size(P_all,2)-1
+                plot3(ax,...
+                    [P_all(1,i) P_all(1,i+1)],...
+                    [P_all(2,i) P_all(2,i+1)],...
+                    [P_all(3,i) P_all(3,i+1)],...
+                    'LineWidth',5,'Color',[0.5 0.8 1]);
+            end
+
+            % joints
+            for i = 1:size(P_all,2)
+                draw_bubble_ui(ax,P_all(:,i),0.015,[0 0 0.8]);
+            end
+
+            % frames
+            for i = 1:numel(T_all)
+                draw_frame_ui(ax,T_all{i},0.05);
+            end
+
+            % draw gripper
+            if gripper_closed
+                draw_gripper(ax, toolPos, 0.02, true);
+            else
+                draw_gripper(ax, toolPos, 0.02, false);
+            end
+
+            drawnow
+            current_q = q;
+        end
+
+        % update state
+        current_q = q_goal;
+
+        % draw the final path (black dashed)
+        pathHandle = plot3(ax,...
+            pathPoints(1,:), pathPoints(2,:), pathPoints(3,:),...
+            'k--','LineWidth',1.5);
+        %plot3(ax, P(1,:), P(2,:), P(3,:), 'r--', 'LineWidth', 2);
+    end
+
+%% Callback: Return Home
+    function goHome(~,~)
+        xField.Value = x_home;
+        yField.Value = y_home;
+        zField.Value = z_home;
+        moveToTarget(x_home,y_home,z_home);
+    end
+
+%% Grab Object
+    function grabObject(x_obj,y_obj,z_obj,x_target,y_target,z_target)
+    
+        z_safe = z_obj + 0.05;
+    
+        % approach
+        moveToTarget(x_obj,y_obj,z_safe);
+    
+        % descend
+        moveToTarget(x_obj,y_obj,z_obj);
+    
+        % close gripper
+        gripper_closed = true;
+    
+        pause(0.5)
+    
+        % lift
+        moveToTarget(x_obj,y_obj,z_safe);
+    
+        % move to target
+        moveToTarget(x_target,y_target,z_safe);
+    
+        % descend
+        moveToTarget(x_target,y_target,z_target);
+    
+        % open
+        gripper_closed = false;
+    
+        pause(0.5)
+    
+        % retreat
+        moveToTarget(x_target,y_target,z_safe);
+    
+    end
+
+%% Move to Home at Startup
+xField.Value = x_home;
+yField.Value = y_home;
+zField.Value = z_home;
+moveToTarget(x_home,y_home,z_home);
+
+%% ===================== FK =====================
+    function [T_all, P_all] = fk_all(q,L1,L2,L3,L4)
+        DH = [ ...
+            0   pi/2   L1   q(1);
+            L2  0      0    q(2);
+            L3  0      0    q(3);
+            L4  0      0    q(4)];
+
+        T = eye(4);
+        T_all = cell(1,4);
+        P_all = [0;0;0];
+
+        for i = 1:4
+            a = DH(i,1);
+            alpha = DH(i,2);
+            d = DH(i,3);
+            th = DH(i,4);
+
+            A = [cos(th) -sin(th)*cos(alpha)  sin(th)*sin(alpha)  a*cos(th);
+                 sin(th)  cos(th)*cos(alpha) -cos(th)*sin(alpha)  a*sin(th);
+                 0        sin(alpha)          cos(alpha)          d;
+                 0        0                   0                   1];
+
+            T = T*A;
+            T_all{i} = T;
+            P_all(:,end+1) = T(1:3,4);
+        end
+    end
+
+%% ===================== IK =====================
+    function q = ik_pos_with_phi(x,y,z,L1,L2,L3,L4,phi)
+        q1 = atan2(y,x);
+        r  = hypot(x,y);
+        zp = z - L1;
+
+        rw = r  - L4*cos(phi);
+        zw = zp - L4*sin(phi);
+
+        d2 = rw^2 + zw^2;
+        c3 = (d2 - L2^2 - L3^2)/(2*L2*L3);
+
+        if abs(c3) > 1
+            q = [NaN NaN NaN NaN];
+            return;
+        end
+
+        s3 = -sqrt(1-c3^2);
+        q3 = atan2(s3,c3);
+
+        alpha = atan2(zw,rw);
+        beta  = atan2(L3*s3, L2 + L3*c3);
+        q2 = alpha - beta;
+
+        q4 = phi - q2 - q3;
+
+        q = [q1 q2 q3 q4];
+    end
+
+%% Search available phi
+function [q, phi_used] = ik_search_phi(x,y,z,L1,L2,L3,L4, q_prev)
+
+    % reject
+%    r = hypot(x,y);
+%    if r < 0.02
+%        q = [NaN NaN NaN NaN];
+%        phi_used = NaN;
+%        return
+%    end
+
+    % initial q
+    if nargin < 8
+        q_prev = [];
+    end
+
+    % range
+    phi_start = -pi/2;
+    phi_end   =  pi/2;
+    step_rad  =  deg2rad(1);
+
+    best_cost = inf;
+
+    q = [NaN NaN NaN NaN];
+    phi_used = NaN;
+
+    % phi and cost
+    for phi = phi_start : step_rad : phi_end
+
+        q_temp = ik_pos_with_phi(x,y,z,L1,L2,L3,L4,phi);
+
+        if ~any(isnan(q_temp))
+
+            if isempty(q_prev)
+                cost = 0;
+            else
+                dq = q_temp - q_prev;
+                dq = wrapToPi(dq);
+                cost = norm(dq)^2;
+            end
+
+            if cost < best_cost
+                best_cost = cost;
+                q = q_temp;
+                phi_used = phi;
+            end
+        end
+    end
+
+end
+
+%% Jacobian
+    function Jv = jacobian_from_fk(T_all)
+    
+        n = numel(T_all);
+        Jv = zeros(3,n);
+    
+        p_e = T_all{end}(1:3,4);
+    
+        for i = 1:n
+    
+            R_i = T_all{i}(1:3,1:3);
+            p_i = T_all{i}(1:3,4);
+    
+            z_i = R_i(:,3);   % joint axis
+    
+            Jv(:,i) = cross(z_i, p_e - p_i);
+    
+        end
+    end
+
+%% =============== Drawing Helpers ===============
+    function draw_frame_ui(ax,T,scale)
+        origin = T(1:3,4);
+        R = T(1:3,1:3);
+
+        plot3(ax,[origin(1) origin(1)+scale*R(1,1)],...
+                 [origin(2) origin(2)+scale*R(2,1)],...
+                 [origin(3) origin(3)+scale*R(3,1)],'r','LineWidth',2);
+
+        plot3(ax,[origin(1) origin(1)+scale*R(1,2)],...
+                 [origin(2) origin(2)+scale*R(2,2)],...
+                 [origin(3) origin(3)+scale*R(3,2)],'g','LineWidth',2);
+
+        plot3(ax,[origin(1) origin(1)+scale*R(1,3)],...
+                 [origin(2) origin(2)+scale*R(2,3)],...
+                 [origin(3) origin(3)+scale*R(3,3)],'b','LineWidth',2);
+    end
+
+    function draw_bubble_ui(ax,center,radius,color)
+        [X,Y,Z] = sphere(15);
+        surf(ax,...
+            radius*X+center(1),...
+            radius*Y+center(2),...
+            radius*Z+center(3),...
+            'FaceColor',color,...
+            'EdgeColor','none');
+    end
+
+    function draw_gripper(ax, center, size, closed)
+    
+        offset = 0.015;
+    
+        if closed
+            d = 0.005;
+        else
+            d = 0.02;
+        end
+    
+        plot3(ax, ...
+            [center(1)-d center(1)-d], ...
+            [center(2) center(2)], ...
+            [center(3)-offset center(3)+offset], ...
+            'k','LineWidth',3);
+    
+        plot3(ax, ...
+            [center(1)+d center(1)+d], ...
+            [center(2) center(2)], ...
+            [center(3)-offset center(3)+offset], ...
+            'k','LineWidth',3);
+    end
+
+end
