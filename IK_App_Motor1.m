@@ -1,4 +1,100 @@
-function IK_App_1
+function IK_App_Motor1
+
+clc;
+clear all;
+
+%% Library
+addpath(genpath('D:\EEE\Robotic Manipulation\LAB\DynamixelSDK-4.0.2\DynamixelSDK-4.0.2\matlab'));
+
+lib_path = 'D:\EEE\Robotic Manipulation\LAB\DynamixelSDK-4.0.2\DynamixelSDK-4.0.2\c\build\win64\output\dxl_x64_c.dll';
+
+header_path = 'D:\EEE\Robotic Manipulation\LAB\DynamixelSDK-4.0.2\DynamixelSDK-4.0.2\c\include\dynamixel_sdk\dynamixel_sdk.h';
+
+if libisloaded('dxl_x64_c')
+    unloadlibrary('dxl_x64_c');
+end
+
+[notfound, warnings] = loadlibrary( ...
+    lib_path, ...
+    header_path, ...
+    'addheader','D:\EEE\Robotic Manipulation\LAB\DynamixelSDK-4.0.2\DynamixelSDK-4.0.2\c\include\dynamixel_sdk\port_handler.h', ...
+    'addheader','D:\EEE\Robotic Manipulation\LAB\DynamixelSDK-4.0.2\DynamixelSDK-4.0.2\c\include\dynamixel_sdk\packet_handler.h');
+
+loadlibrary(lib_path, header_path);
+
+%% ================= Motor Parameters =================
+clear global
+
+global is_estop
+is_estop = false;
+global port_num PROTOCOL_VERSION
+global DXL_ID1 DXL_ID2 DXL_ID3 DXL_ID4 DXL_GRIP
+global ADDR_PRO_GOAL_POSITION ADDR_PRO_PRESENT_POSITION
+global ADDR_PRO_TORQUE_ENABLE ADDR_PRO_OPERATING_MODE
+global ADDR_PRO_PROFILE_VELOCITY ADDR_PRO_PROFILE_ACCELERATION
+global angle_offset
+angle_offset = [0 pi/2 -pi/2 0];
+angle_offset = angle_offset(:);   % 强制变成列向量
+
+DXL_ID1 = 11;
+DXL_ID2 = 12;
+DXL_ID3 = 13;
+DXL_ID4 = 14;
+DXL_GRIP = 15;
+
+PROTOCOL_VERSION = 2.0;
+
+% ---- Control Table Addresses ----
+ADDR_PRO_TORQUE_ENABLE       = 64;
+ADDR_PRO_GOAL_POSITION       = 116;
+ADDR_PRO_PRESENT_POSITION    = 132;
+ADDR_PRO_OPERATING_MODE      = 11;
+ADDR_PRO_PROFILE_VELOCITY    = 112;
+ADDR_PRO_PROFILE_ACCELERATION= 108;
+
+BAUDRATE = 1000000;
+DEVICENAME = 'COM3';
+
+%% ================= Port Setup =================
+port_num = portHandler(DEVICENAME);
+packetHandler();
+
+if ~openPort(port_num)
+    error('Failed to open port');
+end
+
+if ~setBaudRate(port_num, BAUDRATE)
+    error('Failed to set baudrate');
+end
+
+fprintf("Port Opened & Baudrate Set\n");
+
+%% ================= Motor Setup =================
+
+DXL_IDS = [DXL_ID1 DXL_ID2 DXL_ID3 DXL_ID4 DXL_GRIP];
+
+PROFILE_VEL = 100;      % <-- 统一速度
+PROFILE_ACC = 20;       % <-- 统一加速度
+
+for id = DXL_IDS
+
+    % Position Mode
+    write1ByteTxRx(port_num, PROTOCOL_VERSION, id, ADDR_PRO_OPERATING_MODE, 3);
+
+    % Set velocity profile
+    write4ByteTxRx(port_num, PROTOCOL_VERSION, id, ...
+        ADDR_PRO_PROFILE_VELOCITY, typecast(int32(PROFILE_VEL),'uint32'));
+
+    % Set acceleration profile
+    write4ByteTxRx(port_num, PROTOCOL_VERSION, id, ...
+        ADDR_PRO_PROFILE_ACCELERATION, typecast(int32(PROFILE_ACC),'uint32'));
+
+    % Enable torque
+    write1ByteTxRx(port_num, PROTOCOL_VERSION, id, ADDR_PRO_TORQUE_ENABLE, 1);
+
+end
+
+fprintf("All motors initialized in Position Mode\n");
 
 %% Robot Parameters
 L1 = 0.077;
@@ -6,10 +102,29 @@ L2 = 0.130;
 L3 = 0.124;
 L4 = 0.126;
 
+scaleXY = 0.2 / 7.5;
+
 %% Home Position
 x_home = 0.03;
 y_home = 0.00;
 z_home = 0.15;
+
+q_home = [0;
+          2.059;
+         -1.313;
+         -2.317];
+
+%% current angle
+
+% handle for previous path line
+pathHandle = [];
+
+% ===== Read real motor position as initial state =====
+
+sendJointToMotor([0 0 0 0]);
+
+current_q = readJointFromMotor();
+current_q = current_q(:);
 
 %% current angle (init can omit q_prev)
 [current_q, ~] = ik_search_phi(x_home,y_home,z_home,L1,L2,L3,L4);
@@ -24,7 +139,7 @@ fig = uifigure('Name','OpenManipulator IK Control',...
                'Position',[300 200 900 500]);
 
 %% Create 3D Axes inside UI
-ax = uiaxes(fig,'Position',[300 50 550 400]);
+ax = uiaxes(fig,'Position',[300 -20 550 400]);
 axis(ax,'equal')
 grid(ax,'on')
 view(ax,135,25)
@@ -32,18 +147,64 @@ xlabel(ax,'X'); ylabel(ax,'Y'); zlabel(ax,'Z');
 xlim(ax,[-0.5 0.5]); ylim(ax,[-0.5 0.5]); zlim(ax,[0 0.5]);
 hold(ax,'on')
 
-%% Input Fields
-uilabel(fig,'Text','X (m)','Position',[40 400 60 22]);
-uilabel(fig,'Text','Y (m)','Position',[40 360 60 22]);
-uilabel(fig,'Text','Z (m)','Position',[40 320 60 22]);
+%% ================= MOVE PANEL =================
+movePanel = uipanel(fig,...
+    'Title','MOVE',...
+    'Position',[30 360 250 100]);
 
-xField = uieditfield(fig,'numeric','Position',[110 400 120 22],'Value',0.18);
-yField = uieditfield(fig,'numeric','Position',[110 360 120 22],'Value',0.00);
-zField = uieditfield(fig,'numeric','Position',[110 320 120 22],'Value',0.12);
+uilabel(movePanel,'Text','X','Position',[10 40 20 22]);
+uilabel(movePanel,'Text','Y','Position',[90 40 20 22]);
+uilabel(movePanel,'Text','Z','Position',[170 40 20 22]);
+
+moveX = uieditfield(movePanel,'numeric',...
+    'Position',[10 15 60 22],'Value',0.18);
+
+moveY = uieditfield(movePanel,'numeric',...
+    'Position',[90 15 60 22],'Value',0.00);
+
+moveZ = uieditfield(movePanel,'numeric',...
+    'Position',[170 15 60 22],'Value',0.12);
+
+%% ================= GRAB PANEL =================
+grabPanel = uipanel(fig,...
+    'Title','GRAB',...
+    'Position',[300 360 250 100]);
+
+uilabel(grabPanel,'Text','X','Position',[10 40 20 22]);
+uilabel(grabPanel,'Text','Y','Position',[90 40 20 22]);
+uilabel(grabPanel,'Text','Z','Position',[170 40 20 22]);
+
+grabX = uieditfield(grabPanel,'numeric',...
+    'Position',[10 15 60 22],'Value',0.20);
+
+grabY = uieditfield(grabPanel,'numeric',...
+    'Position',[90 15 60 22],'Value',0.00);
+
+grabZ = uieditfield(grabPanel,'numeric',...
+    'Position',[170 15 60 22],'Value',0.05);
+
+%% ================= PUT PANEL =================
+putPanel = uipanel(fig,...
+    'Title','PUT',...
+    'Position',[570 360 250 100]);
+
+uilabel(putPanel,'Text','X','Position',[10 40 20 22]);
+uilabel(putPanel,'Text','Y','Position',[90 40 20 22]);
+uilabel(putPanel,'Text','Z','Position',[170 40 20 22]);
+
+putX = uieditfield(putPanel,'numeric',...
+    'Position',[10 15 60 22],'Value',-0.20);
+
+putY = uieditfield(putPanel,'numeric',...
+    'Position',[90 15 60 22],'Value',0.00);
+
+putZ = uieditfield(putPanel,'numeric',...
+    'Position',[170 15 60 22],'Value',0.05);
+
 
 %% Output Display
 thetaLabel = uitextarea(fig,...
-    'Position',[40 100 200 140],...
+    'Position',[40 50 200 140],...
     'Editable','off',...
     'FontSize',13);
 
@@ -55,6 +216,31 @@ uibutton(fig,'Text','Move Robot',...
 uibutton(fig,'Text','Return Home',...
     'Position',[150 270 120 35],...
     'ButtonPushedFcn',@goHome);
+
+uibutton(fig,'Text','Grab Demo',...
+    'Position',[10 220 120 35],...
+    'ButtonPushedFcn',@grabDemo);
+
+uibutton(fig,'Text','E-STOP',...
+    'Position',[10 170 120 35],...
+    'BackgroundColor',[1 0.3 0.3],...
+    'ButtonPushedFcn',@estop);
+
+%% ================= Draw Initial Robot =================
+drawInitialRobot();
+
+%% Grab
+    function grabDemo(~,~)
+        x_grab = grabX.Value * scaleXY;
+        y_grab = grabY.Value * scaleXY;
+        z_grab = grabZ.Value;
+
+        x_put = putX.Value * scaleXY;
+        y_put = putY.Value * scaleXY;
+        z_put = putZ.Value;
+    
+        grabObject(x_grab,y_grab,z_grab, x_put, y_put, z_put);
+    end
 
 %% Callback: Move Robot
     function moveRobot(~,~)
@@ -251,17 +437,8 @@ uibutton(fig,'Text','Return Home',...
 
 %% Callback: Return Home
     function goHome(~,~)
-        xField.Value = x_home;
-        yField.Value = y_home;
-        zField.Value = z_home;
         moveToTarget(x_home,y_home,z_home);
     end
-
-%% Move to Home at Startup
-xField.Value = x_home;
-yField.Value = y_home;
-zField.Value = z_home;
-moveToTarget(x_home,y_home,z_home);
 
 %% ===================== FK =====================
     function [T_all, P_all] = fk_all(q,L1,L2,L3,L4)
@@ -424,5 +601,139 @@ end
     function a = wrapToPi_local(a)
         a = mod(a + pi, 2*pi) - pi;
     end
+%% Robot Connection
+function tick = rad2tick(rad)
+    deg  = rad * 180/pi;
+    tick = round(deg * 11.375 + 2048);
+    tick = max(min(tick, 4095), 0);
+end
 
+function rad = tick2rad(tick)
+    tick = double(tick);
+    deg  = (tick - 2048) / 11.375;
+    rad  = deg * pi/180;
+end
+
+function sendJointToMotor(q)
+
+    tick1 = rad2tick(q(1));
+    tick2 = rad2tick(q(2));
+    tick3 = rad2tick(q(3));
+    tick4 = rad2tick(q(4));
+
+    write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_PRO_GOAL_POSITION, typecast(int32(tick1),'uint32'));
+    write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID2, ADDR_PRO_GOAL_POSITION, typecast(int32(tick2),'uint32'));
+    write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID3, ADDR_PRO_GOAL_POSITION, typecast(int32(tick3),'uint32'));
+    write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID4, ADDR_PRO_GOAL_POSITION, typecast(int32(tick4),'uint32'));
+
+end
+    
+function q = readJointFromMotor()
+
+    t1 = read4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID1, ADDR_PRO_PRESENT_POSITION);
+    t2 = read4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID2, ADDR_PRO_PRESENT_POSITION);
+    t3 = read4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID3, ADDR_PRO_PRESENT_POSITION);
+    t4 = read4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_ID4, ADDR_PRO_PRESENT_POSITION);
+
+    t1 = dxlBytesToInt32(t1);
+    t2 = dxlBytesToInt32(t2);
+    t3 = dxlBytesToInt32(t3);
+    t4 = dxlBytesToInt32(t4);
+
+    q = [tick2rad(t1);
+         tick2rad(t2);
+         tick2rad(t3);
+         tick2rad(t4)] + angle_offset;
+end
+
+function value = dxlBytesToInt32(data)
+
+    % 如果已经是标量，直接返回
+    if numel(data) == 1
+        value = double(data);
+        return
+    end
+
+    % 如果是4个byte
+    if numel(data) == 4
+        data = uint8(data(:).');          % 保证1x4
+        value = double(typecast(data, 'int32'));
+        return
+    end
+
+    error("Unexpected Dynamixel return size: %d", numel(data));
+end
+
+function u = bytes2u32(x)
+    if isnumeric(x) && numel(x) == 4
+        x = uint8(x(:).');            % 1x4
+        u = typecast(x, 'uint32');    % 4 bytes -> uint32
+        u = double(u);
+    else
+        u = double(x);
+    end
+end
+
+function onClose(~,~)
+
+    ids = [DXL_ID1 DXL_ID2 DXL_ID3 DXL_ID4 DXL_GRIP];
+    for id = ids
+        write1ByteTxRx(port_num, PROTOCOL_VERSION, id, ADDR_PRO_TORQUE_ENABLE, 0);
+    end
+    closePort(port_num);
+    delete(gcf);
+end
+
+function setGripper(closed)
+    if closed
+        tick = 2300; % 你自己标定"闭合"
+    else
+        tick = 1800; % 你自己标定"张开"
+    end
+    write4ByteTxRx(port_num, PROTOCOL_VERSION, DXL_GRIP, ADDR_PRO_GOAL_POSITION, typecast(int32(tick),'uint32'));
+end
+
+function estop(~,~)
+    ids = [DXL_ID1 DXL_ID2 DXL_ID3 DXL_ID4 DXL_GRIP];
+    is_estop = true;
+    for id = ids
+        write1ByteTxRx(port_num, PROTOCOL_VERSION, id, ADDR_PRO_TORQUE_ENABLE, 0);
+    end
+end
+
+function drawInitialRobot()
+
+    % 读取真实电机角度
+    q_init = readJointFromMotor();
+    q_init = q_init(:);
+
+    % 正运动学
+    [T_all, P_all] = fk_all(q_init, L1, L2, L3, L4);
+
+    cla(ax); hold(ax,'on')
+
+    % 画连杆
+    for i = 1:size(P_all,2)-1
+        plot3(ax,...
+            [P_all(1,i) P_all(1,i+1)],...
+            [P_all(2,i) P_all(2,i+1)],...
+            [P_all(3,i) P_all(3,i+1)],...
+            'LineWidth',5,'Color',[0.5 0.8 1]);
+    end
+
+    % 画关节球
+    for i = 1:size(P_all,2)
+        draw_bubble_ui(ax, P_all(:,i), 0.015, [0 0 0.8]);
+    end
+
+    % 画坐标系
+    for i = 1:numel(T_all)
+        draw_frame_ui(ax, T_all{i}, 0.05);
+    end
+
+    % 画夹爪
+    draw_gripper(ax, P_all(:,end), 0.02, gripper_closed);
+
+    drawnow
+end
 end
