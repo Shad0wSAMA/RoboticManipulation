@@ -1,0 +1,55 @@
+function TraverseXYPoints_UpDown(app, points_xy, angle)
+    % points_xy: Nx2 matrix, each row is [x y]
+    % angle: end-effector angle (same as your other functions)
+
+    if isempty(points_xy) || size(points_xy,2) ~= 2
+        error("points_xy must be an Nx2 array: [x y].");
+    end
+
+    z_up   = 0.09;
+    z_down = 0.07;
+
+    % --- Go above the first point ---
+    x0 = points_xy(1,1);
+    y0 = points_xy(1,2);
+    app.GotoPoint(app.grid2pos(x0), app.grid2pos(y0), z_up, angle);
+
+    % --- Descend to working height at first point ---
+    app.GotoPoint(app.grid2pos(x0), app.grid2pos(y0), z_down, angle);
+    app.VELOCITY_DEG = app.V_slow;
+    app.ACCEL_DEG = app.A_slow/2;
+    % --- Traverse all points at z_down ---
+    for i = 1:size(points_xy,1)
+        x = points_xy(i,1);
+        y = points_xy(i,2);
+        app.GotoPoint_Simple(app.grid2pos(x), app.grid2pos(y), z_down, angle);
+    end
+    app.VELOCITY_DEG = app.V_fast;
+    app.ACCEL_DEG = app.A_fast;
+    % --- Go above the last point ---
+    xT = points_xy(end,1);
+    yT = points_xy(end,2);
+    app.GotoPoint(app.grid2pos(xT*1.03), app.grid2pos(yT*1.03), z_up, angle);
+end
+
+function draw_task(app)
+
+    angle = deg2rad(app.PenHoldAngle);
+
+    % 如果队列为空，直接返回
+    if isempty(app.TraceQueue)
+        return;
+    end
+
+    % 按顺序遍历，但不删除
+    for i = 1:numel(app.TraceQueue)
+
+        pts = app.TraceQueue{i};
+
+        drawnow limitrate;  % 让UI有机会刷新（可选）
+
+        % 执行这一笔
+        TraverseXYPoints_UpDown(app, pts, angle);
+    end
+
+end

@@ -1,4 +1,4 @@
-% Read the position of the dynamixel horn with the torque off
+                                                                          % Read the position of the dynamixel horn with the torque off
 % The code executes for a given amount of time then terminates
 
 

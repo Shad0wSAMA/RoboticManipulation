@@ -17,60 +17,74 @@ def lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * t
 
 
-class StrokeSampler:
-    def __init__(self, spacing_px: float) -> None:
-        self.spacing_px = max(1.0, spacing_px)
+class TimeStrokeSampler:
+    def __init__(self, sample_hz: float) -> None:
+        self.sample_hz = max(1e-6, sample_hz)
+        self.sample_period = 1.0 / self.sample_hz
         self.stroke_points_px: List[Point] = []
-        self._last_cursor_px: Optional[Point] = None
-        self._distance_from_last_sample = 0.0
 
-    def start(self, pos: Point) -> None:
+        self._last_cursor_px: Optional[Point] = None
+        self._last_cursor_time: Optional[float] = None
+        self._next_sample_time: Optional[float] = None
+
+    def start(self, pos: Point, t: float) -> None:
         self.stroke_points_px = [pos]
         self._last_cursor_px = pos
-        self._distance_from_last_sample = 0.0
+        self._last_cursor_time = t
+        self._next_sample_time = t + self.sample_period
 
-    def add_cursor(self, pos: Point) -> None:
-        if self._last_cursor_px is None:
-            self.start(pos)
+    def add_cursor(self, pos: Point, t: float) -> None:
+        if self._last_cursor_px is None or self._last_cursor_time is None:
+            self.start(pos, t)
             return
 
-        x0, y0 = self._last_cursor_px
-        x1, y1 = pos
-        dx = x1 - x0
-        dy = y1 - y0
-        seg_len = math.hypot(dx, dy)
-        if seg_len <= 0:
+        p0 = self._last_cursor_px
+        t0 = self._last_cursor_time
+        p1 = pos
+        t1 = t
+
+        if t1 <= t0:
+            self._last_cursor_px = pos
+            self._last_cursor_time = t
             return
 
-        remaining = seg_len
-        offset = 0.0
-        while self._distance_from_last_sample + remaining >= self.spacing_px:
-            need = self.spacing_px - self._distance_from_last_sample
-            t = (offset + need) / seg_len
-            px = lerp(x0, x1, t)
-            py = lerp(y0, y1, t)
-            self.stroke_points_px.append((px, py))
-            offset += need
-            remaining = seg_len - offset
-            self._distance_fsrom_last_sample = 0.0
+        while self._next_sample_time is not None and self._next_sample_time <= t1:
+            alpha = (self._next_sample_time - t0) / (t1 - t0)
+            alpha = max(0.0, min(1.0, alpha))
+            sx = lerp(p0[0], p1[0], alpha)
+            sy = lerp(p0[1], p1[1], alpha)
+            self.stroke_points_px.append((sx, sy))
+            self._next_sample_time += self.sample_period
 
-        self._distance_from_last_sample += remaining
         self._last_cursor_px = pos
+        self._last_cursor_time = t
 
-    def end(self) -> List[Point]:
+    def tick(self, t: float) -> None:
+        if self._last_cursor_px is None or self._next_sample_time is None:
+            return
+
+        while self._next_sample_time <= t:
+            self.stroke_points_px.append(self._last_cursor_px)
+            self._next_sample_time += self.sample_period
+
+    def end(self, t: float) -> List[Point]:
+        self.tick(t)
+
         if self._last_cursor_px is not None:
             last = self._last_cursor_px
             if not self.stroke_points_px:
                 self.stroke_points_px.append(last)
-            elif math.hypot(
-                last[0] - self.stroke_points_px[-1][0],
-                last[1] - self.stroke_points_px[-1][1],
-            ) >= 1.0:
+            elif (
+                abs(last[0] - self.stroke_points_px[-1][0]) > 1e-6
+                or abs(last[1] - self.stroke_points_px[-1][1]) > 1e-6
+            ):
                 self.stroke_points_px.append(last)
+
         pts = self.stroke_points_px
         self.stroke_points_px = []
         self._last_cursor_px = None
-        self._distance_from_last_sample = 0.0
+        self._last_cursor_time = None
+        self._next_sample_time = None
         return pts
 
 
@@ -95,8 +109,10 @@ def map_screen_to_robot(
     else:
         rx = robot_x_min + nx * (robot_x_max - robot_x_min)
         ry = robot_y_max - ny * (robot_y_max - robot_y_min)
+
     if OUTPUT_FLIP_Y:
         ry = robot_y_min + robot_y_max - ry
+
     return rx, ry
 
 
@@ -110,12 +126,17 @@ def map_robot_to_screen(
     display_swap_xy: bool = False,
 ) -> Tuple[int, int]:
     rx, ry = p
+
+    if OUTPUT_FLIP_Y:
+        ry = robot_y_min + robot_y_max - ry
+
     if display_swap_xy:
         nx = (ry - robot_y_min) / max(1e-9, (robot_y_max - robot_y_min))
         ny = (robot_x_max - rx) / max(1e-9, (robot_x_max - robot_x_min))
     else:
         nx = (rx - robot_x_min) / max(1e-9, (robot_x_max - robot_x_min))
         ny = (robot_y_max - ry) / max(1e-9, (robot_y_max - robot_y_min))
+
     sx = workspace_rect.left + int(round(nx * workspace_rect.width))
     sy = workspace_rect.top + int(round(ny * workspace_rect.height))
     return sx, sy
@@ -141,6 +162,7 @@ def compute_workspace_rect(
     else:
         world_w = max(1e-9, robot_x_max - robot_x_min)
         world_h = max(1e-9, robot_y_max - robot_y_min)
+
     scale = min(avail_w / world_w, avail_h / world_h)
 
     rect_w = int(round(world_w * scale))
@@ -157,11 +179,13 @@ def clamp_point_to_rect(p: Point, rect: pygame.Rect) -> Point:
     return float(cx), float(cy)
 
 
-def build_payload(stroke_id: int, robot_points: List[Point]) -> str:
+def build_payload(stroke_id: int, robot_points: List[Point], sample_hz: float) -> str:
     payload = {
         "stroke_id": stroke_id,
         "timestamp": time.time(),
         "point_count": len(robot_points),
+        "sample_hz": sample_hz,
+        "dt": 1.0 / max(1e-6, sample_hz),
         "points": [[round(x, 4), round(y, 4)] for x, y in robot_points],
     }
     return json.dumps(payload, ensure_ascii=False)
@@ -181,8 +205,8 @@ def build_workspace_grid(
     surf.fill((235, 238, 242))
     pygame.draw.rect(surf, (248, 250, 252), workspace_rect)
 
-    # Fine grid in robot coordinates.
     grid_color = (220, 225, 230)
+
     x = math.ceil(robot_x_min)
     while x <= math.floor(robot_x_max):
         p1 = map_robot_to_screen(
@@ -229,10 +253,8 @@ def build_workspace_grid(
         pygame.draw.line(surf, grid_color, p1, p2, 1)
         y += 1
 
-    # Workspace border.
     pygame.draw.rect(surf, (120, 130, 140), workspace_rect, 1)
 
-    # Axes (if 0 is in range).
     if robot_x_min <= 0.0 <= robot_x_max:
         p1 = map_robot_to_screen(
             (0.0, robot_y_min),
@@ -253,6 +275,7 @@ def build_workspace_grid(
             display_swap_xy,
         )
         pygame.draw.line(surf, (80, 110, 220), p1, p2, 1)
+
     if robot_y_min <= 0.0 <= robot_y_max:
         p1 = map_robot_to_screen(
             (robot_x_min, 0.0),
@@ -273,6 +296,7 @@ def build_workspace_grid(
             display_swap_xy,
         )
         pygame.draw.line(surf, (80, 110, 220), p1, p2, 1)
+
     return surf
 
 
@@ -286,7 +310,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--password", default=None, help="MQTT password")
     parser.add_argument("--width", type=int, default=1000, help="Window width")
     parser.add_argument("--height", type=int, default=700, help="Window height")
-    parser.add_argument("--spacing", type=float, default=10, help="Point spacing in pixels")
+    parser.add_argument(
+        "--sample-hz",
+        type=float,
+        default=20,
+        help="Fixed point sampling frequency in Hz",
+    )
     parser.add_argument("--robot-x-min", type=float, default=4.0)
     parser.add_argument("--robot-x-max", type=float, default=9.0)
     parser.add_argument("--robot-y-min", type=float, default=-8.0)
@@ -300,7 +329,7 @@ def main() -> None:
     mqtt_client = mqtt.Client(client_id=args.client_id, protocol=mqtt.MQTTv311)
     if args.username:
         mqtt_client.username_pw_set(args.username, args.password)
-    
+
     try:
         mqtt_client.connect(args.host, args.port, keepalive=30)
         mqtt_client.loop_start()
@@ -314,6 +343,7 @@ def main() -> None:
     pygame.display.set_caption("Robot Draw Sender")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("consolas", 18)
+
     workspace_rect = compute_workspace_rect(
         args.width,
         args.height,
@@ -338,19 +368,26 @@ def main() -> None:
         ),
         (0, 0),
     )
+
     sampled_overlay = pygame.Surface((args.width, args.height), pygame.SRCALPHA)
 
-    sampler = StrokeSampler(spacing_px=args.spacing)
+    sampler = TimeStrokeSampler(sample_hz=args.sample_hz)
     drawing = False
     stroke_id = 0
-    all_strokes = []  # List to store all completed strokes
-    save_counter = 0  # Counter for save file numbering
+    all_strokes = []
+    save_counter = 0
     running = True
 
     while running:
+        now = time.perf_counter()
+
+        if drawing:
+            sampler.tick(now)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_c:
                     canvas.blit(
@@ -367,32 +404,45 @@ def main() -> None:
                         (0, 0),
                     )
                     sampled_overlay.fill((0, 0, 0, 0))
-                    all_strokes = []  # Clear all strokes when clearing canvas
+                    all_strokes = []
+                    print("[CLEAR] Canvas and stored strokes cleared")
+
                 elif event.key == pygame.K_s:
-                    # Save all strokes to JSON file
                     save_counter += 1
                     filename = f"strokes{save_counter}.json"
-                    with open(filename, "w") as f:
-                        json.dump({"strokes": all_strokes}, f, indent=2)
+                    with open(filename, "w", encoding="utf-8") as f:
+                        json.dump({"strokes": all_strokes}, f, indent=2, ensure_ascii=False)
                     print(f"[SAVE] Saved {len(all_strokes)} strokes to {filename}")
+
                 elif event.key == pygame.K_ESCAPE:
                     running = False
+
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if not workspace_rect.collidepoint(event.pos):
                     continue
+
                 drawing = True
-                sampler.start(event.pos)
+                start_pos = clamp_point_to_rect(event.pos, workspace_rect)
+                sampler.start(start_pos, time.perf_counter())
+
             elif event.type == pygame.MOUSEMOTION and drawing:
                 prev = sampler._last_cursor_px
                 curr = clamp_point_to_rect(event.pos, workspace_rect)
-                sampler.add_cursor(curr)
+                sampler.add_cursor(curr, time.perf_counter())
+
                 if prev is not None:
                     pygame.draw.line(canvas, (20, 20, 20), prev, curr, 3)
+
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and drawing:
+                curr = clamp_point_to_rect(event.pos, workspace_rect)
+                sampler.add_cursor(curr, time.perf_counter())
                 drawing = False
-                px_points = sampler.end()
+
+                px_points = sampler.end(time.perf_counter())
+
                 if px_points:
                     stroke_id += 1
+
                     for sx, sy in px_points:
                         pygame.draw.circle(
                             sampled_overlay,
@@ -400,6 +450,7 @@ def main() -> None:
                             (int(round(sx)), int(round(sy))),
                             4,
                         )
+
                     robot_points = [
                         map_screen_to_robot(
                             p,
@@ -412,10 +463,13 @@ def main() -> None:
                         )
                         for p in px_points
                     ]
-                    msg = build_payload(stroke_id, robot_points)
+
+                    msg = build_payload(stroke_id, robot_points, args.sample_hz)
+
                     print(f"[STROKE] id={stroke_id} points={len(robot_points)}")
                     print(robot_points)
                     print(f"[JSON] {msg}")
+
                     result = mqtt_client.publish(args.topic, payload=msg, qos=0, retain=False)
                     if result.rc == mqtt.MQTT_ERR_SUCCESS:
                         print(
@@ -424,21 +478,30 @@ def main() -> None:
                         )
                     else:
                         print(f"[PUB] failed stroke={stroke_id}, rc={result.rc}")
-                    # Add the stroke to all_strokes
-                    all_strokes.append({
-                        "stroke_id": stroke_id,
-                        "points": [[round(x, 4), round(y, 4), 0.07] for x, y in robot_points]
-                    })
+
+                    all_strokes.append(
+                        {
+                            "stroke_id": stroke_id,
+                            "sample_hz": args.sample_hz,
+                            "dt": 1.0 / max(1e-6, args.sample_hz),
+                            "points": [
+                                [round(x, 4), round(y, 4), 0.07] for x, y in robot_points
+                            ],
+                        }
+                    )
 
         screen.fill((240, 240, 240))
         screen.blit(canvas, (0, 0))
         screen.blit(sampled_overlay, (0, 0))
+
         hint = "LMB draw | C clear | S save to JSON | ESC quit"
         info = (
-            f"{hint} | spacing={args.spacing}px | "
-            f"map x:[{args.robot_x_min},{args.robot_x_max}] y:[{args.robot_y_min},{args.robot_y_max}]"
+            f"{hint} | sample={args.sample_hz:.1f}Hz | "
+            f"map x:[{args.robot_x_min},{args.robot_x_max}] "
+            f"y:[{args.robot_y_min},{args.robot_y_max}]"
         )
         screen.blit(font.render(info, True, (50, 50, 50)), (12, 10))
+
         pygame.display.flip()
         clock.tick(120)
 
