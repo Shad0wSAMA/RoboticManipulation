@@ -1,0 +1,115 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{caption}
+
+\title{Robotic Manipulation Coursework \\ Task 3 Report}
+\author{Team Name \\ Student 1 \\ Student 2 \\ Student 3}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Task 3 – Robotic Calligraphy and Paper Placement}
+
+\subsection{Task Motivation}
+
+Our task combines paper manipulation with robotic calligraphy: the robot must autonomously write Chinese characters (brush strokes) on a sheet of paper and then attach the finished artwork to a wall. This task integrates indirect grasping, object placement, end-effector tool exchange, and fine-motion control.
+
+The complete workflow consists of three main stages: (1) retrieving and positioning the paper using magnetic forces, (2) writing brush strokes on a small table using a calligraphy brush, and (3) attaching the finished work to a metal surface on the wall. The robot employs a magnetic tool to lift the paper using two opposing magnets separated by the paper itself. After placement on a working surface, the robot exchanges its magnetic holder for a brush to perform the writing task, then returns to magnetic manipulation to attach the result to the wall.
+
+\begin{figure}[H]
+\centering
+\fbox{\rule{0pt}{5cm}\rule{10cm}{0pt}}
+\caption{Overview of the experimental setup including the robot arm, magnetic tool, magnets and target wall surface.}
+\end{figure}
+
+\subsection{Mechanical Design}
+
+The task involves two distinct end-effectors: a magnetic tool for paper handling and a brush holder for writing.
+
+\textbf{Magnetic Tool for Paper Manipulation:} A cylindrical tool containing an internal magnet enables indirect grasping by attracting another magnet placed beneath the paper. This design creates a magnetic sandwich where the paper is trapped between two opposing magnetic forces. The tool's cylindrical housing provides magnetic shielding that creates a critical difference in magnetic field strength: the magnet adheres more strongly to external metal surfaces than to the carried magnet through the housing material. This property allows the robot to release the tool while leaving the magnet attached to the wall.
+
+\textbf{Brush Tool:} A brush holder mounted on the robot's gripper allows precise positioning and orientation of a traditional Chinese calligraphy brush. The brush must be held at controlled heights and angles to achieve proper ink delivery and stroke characteristics.
+
+\begin{figure}[H]
+\centering
+\fbox{\rule{0pt}{5cm}\rule{10cm}{0pt}}
+\caption{CAD model of the cylindrical magnetic tool used by the robot.}
+\end{figure}
+
+\subsection{Task Execution}
+
+The complete manipulation and writing task consists of multiple sequential stages:
+
+\begin{enumerate}
+\item The robot grasps the magnetic tool and attracts the carried magnet to pick up the paper (paper trapped between two opposing magnets).
+\item The robot transports the paper to a working surface (small table) and gently releases it.
+\item The robot disengages the magnetic tool and moves to a fixed brush holder to retrieve a calligraphy brush.
+\item Using the brush tool, the robot writes Chinese characters on the paper by executing a series of programmed strokes:
+    \begin{itemize}
+    \item Controlling vertical brush height to regulate pressure and ink delivery
+    \item Managing movement speed to control ink saturation and stroke thickness
+    \item Executing precise pen-down and pen-up motions with correct brush hair orientation
+    \end{itemize}
+\item The robot returns the brush to the holder.
+\item The robot retrieves the magnetic tool again and reattaches to the paper.
+\item The robot lifts the paper from the table and transports it to the wall.
+\item The magnet is pressed against a metal plate on the wall, allowing the robot to release the tool while the finished artwork remains attached.
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\fbox{\rule{0pt}{5cm}\rule{10cm}{0pt}}
+\caption{Sequence of the manipulation process showing magnet pickup, paper lifting and final placement on the wall.}
+\end{figure}
+
+\subsection{Challenges}
+
+This task integrates multiple complex challenges spanning mechanical manipulation and robotic control:
+
+\textbf{Paper Grasping and Transport:} Indirect magnetic grasping requires accurate positioning of the dual magnets to ensure reliable paper capture without slipping. The paper is a flexible, deformable object that can shift or misalign during transport, requiring careful velocity control and vibration minimization. Additionally, safe release on the work surface without dropping is critical.
+
+\textbf{Brush Calligraphy Control:} Writing Chinese characters with a robot introduces several interrelated control challenges:
+
+\begin{itemize}
+\item \textbf{Pressure Regulation (Fine Height Adjustment):} Fine vertical height adjustment is necessary to control brush-paper contact force. Too much pressure causes excessive ink bleeding and deformation; insufficient pressure results in incomplete strokes. Real-time force feedback is impractical with standard brush tools.
+
+\item \textbf{Ink Delivery Control (Stroke Speed Management):} Brush stroke speed directly affects ink saturation and stroke appearance. Fast strokes produce light, thin lines; slow strokes produce darker, thicker characters. Achieving consistent appearance across different stroke types requires adaptive speed control along the trajectory.
+
+\item \textbf{Stroke Initiation and Termination (Brush Orientation Control):} Professional calligraphy requires careful pen-down and pen-up motions with specific brush hair orientation. Improper initialization can produce uneven stroke starts; poor termination compromises the aesthetic quality of stroke endings. Controlling brush angle and orientation during transitions adds geometric complexity to the motion plan.
+\end{itemize}
+
+\textbf{Tool Exchange and Re-attachment:} Switching between magnetic and brush tools, combined with the requirement to re-establish magnetic contact after table placement, introduces timing synchronization and positioning accuracy demands. The task demands reliable execution across multiple distinct phases without intermediate failure.
+
+Overall, this task demonstrates the complexity of integrating indirect manipulation, flexible object handling, fine-motion control, and sequential tool exchange into a single coordinated robotic process.
+
+\subsection{Trajectory Refinement and Calligraphy Interface}
+
+To address the challenges of generating precise brush stroke trajectories, we developed an iterative approach combining kinesthetic teaching with interactive trajectory refinement:
+
+\textbf{Initial Trajectory Generation:} The robot's torque control is disabled, allowing a human operator to physically guide the robot's end-effector while writing the desired character on paper. This kinesthetic teaching method generates a rough initial trajectory that captures the overall stroke patterns and sequences.
+
+\textbf{Interactive Refinement UI:} A custom graphical interface built with PyGame enables fine-grained trajectory adjustment. The trajectory of each stroke is displayed as a series of discrete interpolation points. The operator can interactively select and drag individual waypoints to refine pressure profiles, speed variations, and brush orientation angles. This point-based editing paradigm allows intuitive adjustment of:
+
+\begin{itemize}
+\item Vertical position coordinates (affecting brush pressure and ink delivery)
+\item Horizontal path curvature and smoothness
+\item Temporal spacing between waypoints (controlling stroke speed)
+\item Brush orientation angles at key points along the trajectory
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\fbox{\rule{0pt}{5cm}\rule{10cm}{0pt}}
+\caption{PyGame-based user interface for trajectory refinement, showing interpolation points and interactive waypoint editing.}
+\end{figure}
+
+Once refined trajectories are finalized in the UI, they are exported for autonomous robot execution. This hybrid teaching and refinement methodology bridges the gap between human intuition for calligraphic aesthetics and robotic precision for consistent execution.
+
+\end{document}
